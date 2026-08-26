@@ -8,8 +8,7 @@ generator client {
 }
 
 model GuildConfig {
-  id                    String   @id @default(uuid())
-  guildId                String   @unique
+  guildId               String   @id
   antiRaidEnabled       Boolean  @default(false)
   antiRaidThreshold     Int      @default(10)
   antiSpamEnabled       Boolean  @default(true)
