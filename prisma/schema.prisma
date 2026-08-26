@@ -9,6 +9,7 @@ generator client {
 
 model GuildConfig {
   guildId               String   @id
+  prefix                String?  @default("!")
   antiRaidEnabled       Boolean  @default(false)
   antiRaidThreshold     Int      @default(10)
   antiSpamEnabled       Boolean  @default(true)
