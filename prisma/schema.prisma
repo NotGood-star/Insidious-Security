@@ -1,0 +1,48 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model GuildConfig {
+  guildId           String   @id
+  prefix            String   @default("/")
+  
+  // Log Channels
+  logChannelId      String?
+  modLogChannelId   String?
+  securityChannelId String?
+  
+  // Configured Roles
+  staffRoleId       String?
+  adminRoleId       String?
+  mutedRoleId       String?
+  verifiedRoleId    String?
+  
+  // Security Toggles & Thresholds
+  antiRaidEnabled   Boolean  @default(false)
+  antiRaidThreshold Int      @default(10) // Joins per minute
+  antiSpamEnabled   Boolean  @default(true)
+  antiLinkEnabled   Boolean  @default(false)
+  verificationChannelId String?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  cases             ModCase[]
+}
+
+model ModCase {
+  id         Int      @id @default(autoincrement())
+  guildId    String
+  userId     String
+  moderatorId String
+  action     String   // BAN, KICK, TIMEOUT, WARN
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  guild      GuildConfig @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+}
