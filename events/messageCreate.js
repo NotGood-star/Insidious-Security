@@ -9,13 +9,12 @@ module.exports = {
   async execute(message, client) {
     if (message.author.bot || !message.guild) return;
 
-    // 1. Owner & Admin Bypass Check
+    // 1. Owner & Admin Bypass
     if (message.author.id === OWNER_ID || message.member?.permissions.has(PermissionFlagsBits.Administrator)) {
       return;
     }
 
     try {
-      // 2. Fetch or Create Guild Settings safely
       let config = await client.db.guildConfig.findUnique({
         where: { guildId: message.guild.id }
       }).catch(() => null);
@@ -26,7 +25,7 @@ module.exports = {
         }).catch(() => null);
       }
 
-      // 3. Whitelist Check (User or Role)
+      // 2. Security Whitelist Check
       const userRoles = message.member?.roles.cache.map(r => r.id) || [];
       const isWhitelisted = await client.db.whitelist.findFirst({
         where: {
@@ -49,14 +48,24 @@ module.exports = {
         await message.delete().catch(() => {});
 
         if (message.member?.bannable) {
-          await message.guild.members.ban(message.author.id, { 
-            reason: 'Security Enforcement: Unauthorized Link / Invite Shared' 
-          });
+          const reason = 'Security Enforcement: Unauthorized Invite Link Shared';
+          
+          await message.guild.members.ban(message.author.id, { reason });
 
-          await sendLog(message, client, config?.securityChannelId, '🔨 Instant Ban', 'Posted an unauthorized Discord server invite link.');
+          // Save action to Database Log
+          await client.db.securityLog.create({
+            data: {
+              guildId: message.guild.id,
+              userId: message.author.id,
+              action: 'BAN',
+              reason: reason
+            }
+          }).catch(() => {});
+
+          await sendLog(message, client, config?.securityChannelId, `${embeds.emojis.BAN} Instant Ban`, reason);
 
           const alert = await message.channel.send({
-            embeds: [embeds.error('User Banned', `${message.author.tag} was banned for sharing invite links.`)]
+            embeds: [embeds.error('User Banned', `${message.author.tag} was banned for posting server invites.`)]
           });
           setTimeout(() => alert.delete().catch(() => {}), 5000);
         }
@@ -68,10 +77,22 @@ module.exports = {
         await message.delete().catch(() => {});
 
         if (message.member?.kickable) {
-          await message.member.kick('Security Enforcement: Mass mention (@everyone/@here)');
-          
-          await sendLog(message, client, config?.securityChannelId, '👢 Instant Kick', 'Mentioned @everyone or @here.');
-          
+          const reason = 'Security Enforcement: Mass mention (@everyone/@here)';
+
+          await message.member.kick(reason);
+
+          // Save action to Database Log
+          await client.db.securityLog.create({
+            data: {
+              guildId: message.guild.id,
+              userId: message.author.id,
+              action: 'KICK',
+              reason: reason
+            }
+          }).catch(() => {});
+
+          await sendLog(message, client, config?.securityChannelId, `${embeds.emojis.KICK} Instant Kick`, reason);
+
           const alert = await message.channel.send({
             embeds: [embeds.error('User Kicked', `${message.author.tag} was kicked for tagging @everyone/@here.`)]
           });
@@ -80,7 +101,7 @@ module.exports = {
         return;
       }
 
-      // --- RULE 3: Word Repeated More Than 2 Times -> 2m TIMEOUT ---
+      // --- RULE 3: Word Repeated 3+ Times -> 2m TIMEOUT ---
       const cleanText = content.toLowerCase().replace(/[^a-zA-Z0-9\s]/g, '');
       const words = cleanText.split(/\s+/).filter(w => w.length > 1);
       
@@ -90,7 +111,7 @@ module.exports = {
 
       for (const word of words) {
         counts[word] = (counts[word] || 0) + 1;
-        if (counts[word] > 2) { // Sent 3 or more times in single message
+        if (counts[word] > 2) {
           hasRepeatedSpam = true;
           targetWord = word;
           break;
@@ -101,9 +122,21 @@ module.exports = {
         await message.delete().catch(() => {});
 
         if (message.member?.moderatable) {
-          await message.member.timeout(2 * 60 * 1000, `Repeated word "${targetWord}" 3+ times`);
+          const reason = `Repeated word "${targetWord}" 3+ times in a single message`;
 
-          await sendLog(message, client, config?.securityChannelId, '⏰ 2m Timeout', `Repeated word "${targetWord}" more than 2 times.`);
+          await message.member.timeout(2 * 60 * 1000, reason);
+
+          // Save action to Database Log
+          await client.db.securityLog.create({
+            data: {
+              guildId: message.guild.id,
+              userId: message.author.id,
+              action: 'TIMEOUT',
+              reason: reason
+            }
+          }).catch(() => {});
+
+          await sendLog(message, client, config?.securityChannelId, `${embeds.emojis.WARN} 2m Timeout`, reason);
 
           const alert = await message.channel.send({
             embeds: [embeds.warning('User Timed Out', `${message.author} has been timed out for 2 minutes for repeating words.`)]
@@ -114,7 +147,7 @@ module.exports = {
       }
 
     } catch (err) {
-      logger.error('Error in messageCreate event handler:', err);
+      logger.error('Error in security message handler:', err);
     }
   }
 };
@@ -125,7 +158,7 @@ async function sendLog(message, client, channelId, title, details) {
   if (!channel) return;
 
   const logEmbed = embeds.security(
-    `🛡️ Enforcement: ${title}`,
+    `Security Enforcement: ${title}`,
     `**User:** ${message.author.tag} (\`${message.author.id}\`)\n` +
     `**Channel:** ${message.channel}\n` +
     `**Reason:** ${details}\n` +
@@ -133,4 +166,4 @@ async function sendLog(message, client, channelId, title, details) {
   );
 
   await channel.send({ embeds: [logEmbed] }).catch(() => {});
-        }
+          }
