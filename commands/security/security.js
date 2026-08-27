@@ -1,45 +1,41 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const embeds = require('../../utils/embeds');
+
+const OWNER_ID = '1383823552586715197';
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('security')
-    .setDescription('Manage multi-guild security engine configurations')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .setDescription('Manage server security protection modules')
     .addSubcommand(sub =>
-      sub.setName('status').setDescription('View current security settings')
+      sub.setName('status')
+        .setDescription('View current status of all security modules')
     )
     .addSubcommand(sub =>
       sub.setName('toggle')
-        .setDescription('Toggle security features on or off')
+        .setDescription('Enable or disable a security module')
         .addStringOption(opt =>
-          opt.setName('feature')
-            .setDescription('Feature to toggle')
+          opt.setName('module')
+            .setDescription('Security module to configure')
             .setRequired(true)
             .addChoices(
-              { name: 'Anti-Raid', value: 'antiRaid' },
-              { name: 'Anti-Spam', value: 'antiSpam' },
-              { name: 'Anti-Link', value: 'antiLink' }
+              { name: 'Anti-Spam', value: 'antiSpamEnabled' },
+              { name: 'Anti-Link', value: 'antiLinkEnabled' },
+              { name: 'Anti-Raid', value: 'antiRaidEnabled' }
             )
         )
         .addBooleanOption(opt =>
-          opt.setName('enabled')
-            .setDescription('Enable (true) or Disable (false)')
-            .setRequired(true)
-        )
-    )
-    .addSubcommand(sub =>
-      sub.setName('setup')
-        .setDescription('Configure security log and audit channels')
-        .addChannelOption(opt =>
-          opt.setName('log_channel')
-            .setDescription('Channel where security alerts will be sent')
-            .addChannelTypes(ChannelType.GuildText)
+          opt.setName('state')
+            .setDescription('Enable (True) or Disable (False)')
             .setRequired(true)
         )
     ),
 
   async execute(interaction, client) {
+    if (interaction.user.id !== OWNER_ID && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ embeds: [embeds.error('Access Denied', 'Admin privileges required.')], ephemeral: true });
+    }
+
     await interaction.deferReply();
     const subcommand = interaction.options.getSubcommand();
     const guildId = interaction.guild.id;
@@ -49,58 +45,34 @@ module.exports = {
       config = await client.db.guildConfig.create({ data: { guildId } });
     }
 
-    // --- SUBCOMMAND: STATUS ---
     if (subcommand === 'status') {
-      const antiRaidStatus = config.antiRaidEnabled ? '🟢 Enabled' : '🔴 Disabled';
-      const antiSpamStatus = config.antiSpamEnabled ? '🟢 Enabled' : '🔴 Disabled';
-      const antiLinkStatus = config.antiLinkEnabled ? '🟢 Enabled' : '🔴 Disabled';
+      const getIcon = (state) => state ? embeds.emojis.CHECK : embeds.emojis.CROSS;
 
-      const embed = embeds.security(
-        'Server Security Status Overview',
-        `**Guild ID:** \`${guildId}\`\n\n` +
-        `🛡️ **Anti-Raid Protection:** ${antiRaidStatus}\n` +
-        `⚡ **Join Threshold:** \`${config.antiRaidThreshold || 10} joins / min\`\n` +
-        `💬 **Anti-Spam Monitor:** ${antiSpamStatus}\n` +
-        `🔗 **Anti-Link Filter:** ${antiLinkStatus}\n` +
-        `🔐 **Verification System:** ${config.verificationChannelId ? `<#${config.verificationChannelId}>` : '`Not Configured`'}\n` +
-        `📋 **Security Audit Channel:** ${config.securityChannelId ? `<#${config.securityChannelId}>` : '`Not Set`'}`
-      );
-      return interaction.editReply({ embeds: [embed] });
+      const description = 
+        `${getIcon(config.antiSpamEnabled)} **Anti-Spam Filter:** \`${config.antiSpamEnabled ? 'ENABLED' : 'DISABLED'}\`\n` +
+        `${getIcon(config.antiLinkEnabled)} **Anti-Link Filter:** \`${config.antiLinkEnabled ? 'ENABLED' : 'DISABLED'}\`\n` +
+        `${getIcon(config.antiRaidEnabled)} **Anti-Raid Protection:** \`${config.antiRaidEnabled ? 'ENABLED' : 'DISABLED'}\` (Limit: \`${config.antiRaidThreshold}/min\`)\n\n` +
+        `${embeds.emojis.LOGS} **Log Channel:** ${config.securityChannelId ? `<#${config.securityChannelId}>` : '`Not Configured`'}`;
+
+      return interaction.editReply({
+        embeds: [embeds.security('System Security Dashboard', description)]
+      });
     }
 
-    // --- SUBCOMMAND: TOGGLE ---
     if (subcommand === 'toggle') {
-      const feature = interaction.options.getString('feature');
-      const enabled = interaction.options.getBoolean('enabled');
-
-      const fieldMap = {
-        antiRaid: 'antiRaidEnabled',
-        antiSpam: 'antiSpamEnabled',
-        antiLink: 'antiLinkEnabled'
-      };
+      const moduleKey = interaction.options.getString('module');
+      const state = interaction.options.getBoolean('state');
 
       await client.db.guildConfig.update({
         where: { guildId },
-        data: { [fieldMap[feature]]: enabled }
+        data: { [moduleKey]: state }
       });
 
-      const stateStr = enabled ? 'enabled 🟢' : 'disabled 🔴';
-      return interaction.editReply({
-        embeds: [embeds.success('Security Updated', `**${feature}** has been **${stateStr}** successfully.`)]
-      });
-    }
-
-    // --- SUBCOMMAND: SETUP ---
-    if (subcommand === 'setup') {
-      const logChannel = interaction.options.getChannel('log_channel');
-
-      await client.db.guildConfig.update({
-        where: { guildId },
-        data: { securityChannelId: logChannel.id }
-      });
+      const moduleName = moduleKey.replace('Enabled', '').toUpperCase();
+      const statusIcon = state ? embeds.emojis.CHECK : embeds.emojis.CROSS;
 
       return interaction.editReply({
-        embeds: [embeds.success('Logs Configured', `Security log channel set to ${logChannel}.`)]
+        embeds: [embeds.success('Module Updated', `${statusIcon} **${moduleName}** protection set to **${state ? 'ENABLED' : 'DISABLED'}**.`)]
       });
     }
   }
