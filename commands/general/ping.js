@@ -21,7 +21,7 @@ module.exports = {
       `${embeds.emojis.MOD} **Bot Latency:** \`${roundtrip}ms\`\n` +
       `${embeds.emojis.CROWN} **WebSocket Latency:** \`${wsPing}ms\`\n` +
       `${embeds.emojis.MEMBER} **PostgreSQL Latency:** \`${dbPing}ms\`\n` +
-      `${embeds.emojis.WARNING} **Uptime:** <t:${Math.floor((Date.now() - client.uptime) / 1000)}:R>`
+      `${embeds.emojis.WARN} **Uptime:** <t:${Math.floor((Date.now() - client.uptime) / 1000)}:R>`
     );
 
     return interaction.editReply({ embeds: [pingEmbed] });
