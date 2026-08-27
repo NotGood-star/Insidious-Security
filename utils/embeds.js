@@ -1,9 +1,8 @@
 const { EmbedBuilder } = require('discord.js');
 
-// Custom Emojis
 const EMOJIS = {
   MOD: '<:Mod:1542472581251072010>',
-  WARNING: '<:11838warning:1492812365593317436>',
+  WARN: '<:Warn:1542472381791080559>',
   CROWN: '<:crown:1542472791457144852>',
   MEMBER: '<:Member:1541403131613806602>'
 };
@@ -21,7 +20,7 @@ module.exports = {
 
   error(title, description) {
     return new EmbedBuilder()
-      .setTitle(`${EMOJIS.WARNING} ${title}`)
+      .setTitle(`${EMOJIS.WARN} ${title}`)
       .setDescription(description)
       .setColor('#ed4245')
       .setTimestamp();
@@ -29,7 +28,7 @@ module.exports = {
 
   warning(title, description) {
     return new EmbedBuilder()
-      .setTitle(`${EMOJIS.WARNING} ${title}`)
+      .setTitle(`${EMOJIS.WARN} ${title}`)
       .setDescription(description)
       .setColor('#fee75c')
       .setTimestamp();
