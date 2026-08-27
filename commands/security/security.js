@@ -55,7 +55,7 @@ module.exports = {
         `${embeds.emojis.LOGS} **Log Channel:** ${config.securityChannelId ? `<#${config.securityChannelId}>` : '`Not Configured`'}`;
 
       return interaction.editReply({
-        embeds: [embeds.security('System Security Dashboard', description)]
+        embeds: [embeds.security(`${interaction.guild.name} — Security Dashboard`, description)]
       });
     }
 
@@ -72,7 +72,7 @@ module.exports = {
       const statusIcon = state ? embeds.emojis.CHECK : embeds.emojis.CROSS;
 
       return interaction.editReply({
-        embeds: [embeds.success('Module Updated', `${statusIcon} **${moduleName}** protection set to **${state ? 'ENABLED' : 'DISABLED'}**.`)]
+        embeds: [embeds.success('Security Module Updated', `${statusIcon} **${moduleName}** protection set to **${state ? 'ENABLED' : 'DISABLED'}** for ${interaction.guild.name}.`)]
       });
     }
   }
