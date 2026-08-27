@@ -4,17 +4,29 @@ const logger = require('../utils/logger');
 
 const OWNER_ID = '1383823552586715197';
 
+// Allowed media and meme domains that will NOT trigger a link mute
+const ALLOWED_DOMAINS = [
+  'tenor.com',
+  'giphy.com',
+  'imgur.com',
+  'youtube.com',
+  'youtu.be',
+  'cdn.discordapp.com',
+  'media.discordapp.net'
+];
+
 module.exports = {
   name: 'messageCreate',
   async execute(message, client) {
     if (message.author.bot || !message.guild) return;
 
-    // 1. Owner & Admin Bypass
+    // 1. Owner & Admin Bypass Check
     if (message.author.id === OWNER_ID || message.member?.permissions.has(PermissionFlagsBits.Administrator)) {
       return;
     }
 
     try {
+      // 2. Fetch or Create Guild Settings safely
       let config = await client.db.guildConfig.findUnique({
         where: { guildId: message.guild.id }
       }).catch(() => null);
@@ -25,7 +37,7 @@ module.exports = {
         }).catch(() => null);
       }
 
-      // 2. Security Whitelist Check
+      // 3. Whitelist Check (User or Role)
       const userRoles = message.member?.roles.cache.map(r => r.id) || [];
       const isWhitelisted = await client.db.whitelist.findFirst({
         where: {
@@ -41,14 +53,12 @@ module.exports = {
 
       const content = message.content;
 
-      // --- RULE 1: Discord Invites & Links -> INSTANT BAN ---
-      const linkRegex = /(https?:\/\/)?(www\.)?(discord\.(gg|io|me|li)|discord(app)?\.com\/invite)\/[a-zA-Z0-9]+/gi;
-      
-      if (linkRegex.test(content) || (config?.antiLinkEnabled && /(https?:\/\/[^\s]+)/gi.test(content))) {
+      // --- RULE 1: @everyone / @here -> INSTANT BAN ---
+      if (message.mentions.everyone || content.includes('@everyone') || content.includes('@here')) {
         await message.delete().catch(() => {});
 
         if (message.member?.bannable) {
-          const reason = 'Security Enforcement: Unauthorized Invite Link Shared';
+          const reason = 'Security Enforcement: Unauthorized Mass Mention (@everyone / @here)';
           
           await message.guild.members.ban(message.author.id, { reason });
 
@@ -65,43 +75,55 @@ module.exports = {
           await sendLog(message, client, config?.securityChannelId, `${embeds.emojis.BAN} Instant Ban`, reason);
 
           const alert = await message.channel.send({
-            embeds: [embeds.error('User Banned', `${message.author.tag} was banned for posting server invites.`)]
+            embeds: [embeds.error('User Banned', `${message.author.tag} was banned for tagging @everyone / @here.`)]
           });
           setTimeout(() => alert.delete().catch(() => {}), 5000);
         }
         return;
       }
 
-      // --- RULE 2: Mass Mention (@everyone / @here) -> INSTANT KICK ---
-      if (message.mentions.everyone || content.includes('@everyone') || content.includes('@here')) {
-        await message.delete().catch(() => {});
+      // --- RULE 2: External Links -> 30m TIMEOUT / MUTE (Excludes Meme & Media Links) ---
+      const urlRegex = /(https?:\/\/[^\s]+)/gi;
+      const links = content.match(urlRegex);
 
-        if (message.member?.kickable) {
-          const reason = 'Security Enforcement: Mass mention (@everyone/@here)';
+      if (links && links.length > 0) {
+        // Check if any detected link falls outside allowed domains
+        const isUnauthorizedLink = links.some(link => {
+          const lowerLink = link.toLowerCase();
+          return !ALLOWED_DOMAINS.some(domain => lowerLink.includes(domain));
+        });
 
-          await message.member.kick(reason);
+        if (isUnauthorizedLink) {
+          await message.delete().catch(() => {});
 
-          // Save action to Database Log
-          await client.db.securityLog.create({
-            data: {
-              guildId: message.guild.id,
-              userId: message.author.id,
-              action: 'KICK',
-              reason: reason
-            }
-          }).catch(() => {});
+          if (message.member?.moderatable) {
+            const durationMs = 30 * 60 * 1000; // 30 Minutes
+            const reason = 'Security Enforcement: Posted unauthorized external link';
 
-          await sendLog(message, client, config?.securityChannelId, `${embeds.emojis.KICK} Instant Kick`, reason);
+            await message.member.timeout(durationMs, reason);
 
-          const alert = await message.channel.send({
-            embeds: [embeds.error('User Kicked', `${message.author.tag} was kicked for tagging @everyone/@here.`)]
-          });
-          setTimeout(() => alert.delete().catch(() => {}), 5000);
+            // Save action to Database Log
+            await client.db.securityLog.create({
+              data: {
+                guildId: message.guild.id,
+                userId: message.author.id,
+                action: 'TIMEOUT',
+                reason: reason
+              }
+            }).catch(() => {});
+
+            await sendLog(message, client, config?.securityChannelId, `${embeds.emojis.WARN} 30m Timeout`, reason);
+
+            const alert = await message.channel.send({
+              embeds: [embeds.warning('User Muted', `${message.author} has been timed out for 30 minutes for posting links.`)]
+            });
+            setTimeout(() => alert.delete().catch(() => {}), 5000);
+          }
+          return;
         }
-        return;
       }
 
-      // --- RULE 3: Word Repeated 3+ Times -> 2m TIMEOUT ---
+      // --- RULE 3: Word Repeated More Than 2 Times -> 2m TIMEOUT ---
       const cleanText = content.toLowerCase().replace(/[^a-zA-Z0-9\s]/g, '');
       const words = cleanText.split(/\s+/).filter(w => w.length > 1);
       
@@ -111,7 +133,7 @@ module.exports = {
 
       for (const word of words) {
         counts[word] = (counts[word] || 0) + 1;
-        if (counts[word] > 2) {
+        if (counts[word] > 2) { // Sent 3 or more times in a single message
           hasRepeatedSpam = true;
           targetWord = word;
           break;
@@ -166,4 +188,4 @@ async function sendLog(message, client, channelId, title, details) {
   );
 
   await channel.send({ embeds: [logEmbed] }).catch(() => {});
-          }
+      }
