@@ -1,222 +1,156 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
 const embeds = require('../../utils/embeds');
 
-const activeGames = new Map();
-
-module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('2048')
-    .setDescription('Play an interactive game of 2048 directly in Discord'),
-
-  async execute(interaction) {
-    await interaction.deferReply();
-
-    const gameData = {
-      board: createEmptyBoard(),
-      score: 0,
-      userId: interaction.user.id
-    };
-
-    spawnTile(gameData.board);
-    spawnTile(gameData.board);
-
-    const gameEmbed = renderBoardEmbed(interaction, gameData);
-    const components = getControlButtons(false);
-
-    const response = await interaction.editReply({
-      embeds: [gameEmbed],
-      components: components
-    });
-
-    activeGames.set(response.id, gameData);
-
-    const collector = response.createMessageComponentCollector({
-      time: 600000 // 10 minute timeout
-    });
-
-    collector.on('collect', async (btnInteraction) => {
-      if (btnInteraction.user.id !== gameData.userId) {
-        return btnInteraction.reply({
-          embeds: [embeds.error('Not Your Game', 'Start your own game using `/2048`.')],
-          ephemeral: true
-        });
-      }
-
-      const direction = btnInteraction.customId.replace('2048_', '');
-      let moved = false;
-
-      if (direction === 'up') moved = moveUp(gameData);
-      if (direction === 'down') moved = moveDown(gameData);
-      if (direction === 'left') moved = moveLeft(gameData);
-      if (direction === 'right') moved = moveRight(gameData);
-
-      if (moved) {
-        spawnTile(gameData.board);
-      }
-
-      const isGameOver = checkGameOver(gameData.board);
-
-      const updatedEmbed = renderBoardEmbed(interaction, gameData, isGameOver);
-      const updatedButtons = getControlButtons(isGameOver);
-
-      await btnInteraction.update({
-        embeds: [updatedEmbed],
-        components: updatedButtons
-      });
-
-      if (isGameOver) {
-        collector.stop();
-        activeGames.delete(response.id);
-      }
-    });
-
-    collector.on('end', async (_, reason) => {
-      if (reason === 'time') {
-        const timeoutEmbed = renderBoardEmbed(interaction, gameData, true, 'Game Timed Out');
-        await interaction.editReply({
-          embeds: [timeoutEmbed],
-          components: getControlButtons(true)
-        }).catch(() => {});
-        activeGames.delete(response.id);
-      }
-    });
-  }
+// Visual tile mapping using emojis
+const TILE_EMOJIS = {
+  0: '⬛',
+  2: '2️⃣',
+  4: '4️⃣',
+  8: '8️⃣',
+  16: '🟧',
+  32: '🟥',
+  64: '🟪',
+  128: '🟦',
+  256: '🟩',
+  512: '🟨',
+  1024: '🌟',
+  2048: '👑'
 };
 
-// --- HELPER FUNCTIONS ---
-
-function createEmptyBoard() {
-  return [
-    [0, 0, 0, 0],
-    [0, 0, 0, 0],
-    [0, 0, 0, 0],
-    [0, 0, 0, 0]
-  ];
+function renderBoard(board) {
+  return board.map(row => row.map(val => TILE_EMOJIS[val] || `\`[${val}]\``).join(' ')).join('\n');
 }
 
 function spawnTile(board) {
-  const emptyCells = [];
+  const empty = [];
   for (let r = 0; r < 4; r++) {
     for (let c = 0; c < 4; c++) {
-      if (board[r][c] === 0) emptyCells.push({ r, c });
+      if (board[r][c] === 0) empty.push({ r, c });
     }
   }
-
-  if (emptyCells.length > 0) {
-    const { r, c } = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+  if (empty.length > 0) {
+    const { r, c } = empty[Math.floor(Math.random() * empty.length)];
     board[r][c] = Math.random() < 0.9 ? 2 : 4;
   }
 }
 
-function renderBoardEmbed(interaction, gameData, gameOver = false, customTitle = null) {
-  const tileEmojis = {
-    0: '⬛', 2: '🟦', 4: '🟩', 8: '🟧',
-    16: '🟥', 32: '🟪', 64: '🟨', 128: '🟫',
-    256: '⚪', 512: '🔘', 1024: '🔴', 2048: '🌟'
-  };
+function slide(row) {
+  let arr = row.filter(val => val !== 0);
+  for (let i = 0; i < arr.length - 1; i++) {
+    if (arr[i] === arr[i + 1]) {
+      arr[i] *= 2;
+      arr[i + 1] = 0;
+    }
+  }
+  arr = arr.filter(val => val !== 0);
+  while (arr.length < 4) arr.push(0);
+  return arr;
+}
 
-  let boardStr = '';
+function rotateLeft(board) {
+  const result = [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]];
   for (let r = 0; r < 4; r++) {
     for (let c = 0; c < 4; c++) {
-      const val = gameData.board[r][c];
-      boardStr += (tileEmojis[val] || '🌟') + ' ';
+      result[3 - c][r] = board[r][c];
     }
-    boardStr += '\n';
   }
-
-  let textBoard = '```\n';
-  for (let r = 0; r < 4; r++) {
-    textBoard += gameData.board[r].map(v => String(v).padStart(5, ' ')).join(' |') + '\n';
-  }
-  textBoard += '```';
-
-  const title = customTitle || (gameOver ? 'Game Over!' : '2048 Game');
-  
-  return embeds.security(
-    `${interaction.guild.name} — ${title}`,
-    `${embeds.emojis.CROWN} **Score:** \`${gameData.score}\` | **Player:** ${interaction.user}\n\n` +
-    boardStr + '\n' + textBoard
-  );
+  return result;
 }
 
-function getControlButtons(disabled = false) {
-  const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('2048_none1').setLabel(' ').setStyle(ButtonStyle.Secondary).setDisabled(true),
-    new ButtonBuilder().setCustomId('2048_up').setEmoji('⬆️').setStyle(ButtonStyle.Primary).setDisabled(disabled),
-    new ButtonBuilder().setCustomId('2048_none2').setLabel(' ').setStyle(ButtonStyle.Secondary).setDisabled(true)
-  );
+function move(board, direction) {
+  let rotated = [...board.map(r => [...r])];
+  let rotations = 0;
 
-  const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('2048_left').setEmoji('⬅️').setStyle(ButtonStyle.Primary).setDisabled(disabled),
-    new ButtonBuilder().setCustomId('2048_down').setEmoji('⬇️').setStyle(ButtonStyle.Primary).setDisabled(disabled),
-    new ButtonBuilder().setCustomId('2048_right').setEmoji('➡️').setStyle(ButtonStyle.Primary).setDisabled(disabled)
-  );
+  if (direction === 'up') rotations = 3;
+  else if (direction === 'right') rotations = 2;
+  else if (direction === 'down') rotations = 1;
 
-  return [row1, row2];
+  for (let i = 0; i < rotations; i++) rotated = rotateLeft(rotated);
+
+  for (let r = 0; r < 4; r++) rotated[r] = slide(rotated[r]);
+
+  for (let i = 0; i < (4 - rotations) % 4; i++) rotated = rotateLeft(rotated);
+
+  return rotated;
 }
 
-// --- BOARD MOVEMENT LOGIC ---
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('2048')
+    .setDescription('Play an interactive game of 2048'),
 
-function moveLeft(gameData) {
-  let moved = false;
-  for (let r = 0; r < 4; r++) {
-    let row = gameData.board[r].filter(val => val !== 0);
-    for (let c = 0; c < row.length - 1; c++) {
-      if (row[c] === row[c + 1]) {
-        row[c] *= 2;
-        gameData.score += row[c];
-        row[c + 1] = 0;
+  async execute(interaction) {
+    await interaction.deferReply();
+
+    let board = [
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0]
+    ];
+
+    spawnTile(board);
+    spawnTile(board);
+
+    const getRows = () => [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('up').setEmoji('⬆️').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('left').setEmoji('⬅️').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('right').setEmoji('➡️').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('down').setEmoji('⬇️').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('stop').setEmoji('🛑').setStyle(ButtonStyle.Danger)
+      )
+    ];
+
+    const gameEmbed = embeds.security(
+      `${interaction.guild.name} — 2048`,
+      `**Player:** ${interaction.user}\n\n${renderBoard(board)}`
+    );
+
+    const response = await interaction.editReply({
+      embeds: [gameEmbed],
+      components: getRows()
+    });
+
+    const collector = response.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time: 300000 // 5 Minutes idle timeout
+    });
+
+    collector.on('collect', async btn => {
+      if (btn.user.id !== interaction.user.id) {
+        return btn.reply({ content: 'Start your own game with `/2048`!', ephemeral: true });
       }
-    }
-    row = row.filter(val => val !== 0);
-    while (row.length < 4) row.push(0);
 
-    for (let c = 0; c < 4; c++) {
-      if (gameData.board[r][c] !== row[c]) moved = true;
-      gameData.board[r][c] = row[c];
-    }
-  }
-  return moved;
-}
-
-function rotateBoard(board) {
-  const newBoard = createEmptyBoard();
-  for (let r = 0; r < 4; r++) {
-    for (let c = 0; c < 4; c++) {
-      newBoard[c][3 - r] = board[r][c];
-    }
-  }
-  return newBoard;
-}
-
-function moveRight(gameData) {
-  gameData.board = rotateBoard(rotateBoard(gameData.board));
-  const moved = moveLeft(gameData);
-  gameData.board = rotateBoard(rotateBoard(gameData.board));
-  return moved;
-}
-
-function moveUp(gameData) {
-  gameData.board = rotateBoard(rotateBoard(rotateBoard(gameData.board)));
-  const moved = moveLeft(gameData);
-  gameData.board = rotateBoard(gameData.board);
-  return moved;
-}
-
-function moveDown(gameData) {
-  gameData.board = rotateBoard(gameData.board);
-  const moved = moveLeft(gameData);
-  gameData.board = rotateBoard(rotateBoard(rotateBoard(gameData.board)));
-  return moved;
-}
-
-function checkGameOver(board) {
-  for (let r = 0; r < 4; r++) {
-    for (let c = 0; c < 4; c++) {
-      if (board[r][c] === 0) return false;
-      if (c < 3 && board[r][c] === board[r][c + 1]) return false;
-      if (r < 3 && board[r][c] === board[r + 1][c]) return false;
-    }
-  }
-  return true;
+      if (btn.customId === 'stop') {
+        collector.stop('stopped');
+        return btn.update({
+          embeds: [embeds.warning('Game Ended', `You ended your 2048 game session.\n\n${renderBoard(board)}`)].map(e => e.setFooter({ text: 'Insidious Global Security' })),
+          components: []
+        });
       }
+
+      const newBoard = move(board, btn.customId);
+      if (JSON.stringify(newBoard) !== JSON.stringify(board)) {
+        board = newBoard;
+        spawnTile(board);
+      }
+
+      const updatedEmbed = embeds.security(
+        `${interaction.guild.name} — 2048`,
+        `**Player:** ${interaction.user}\n\n${renderBoard(board)}`
+      );
+
+      await btn.update({ embeds: [updatedEmbed], components: getRows() });
+    });
+
+    collector.on('end', (_, reason) => {
+      if (reason !== 'stopped') {
+        interaction.editReply({ 
+          components: [],
+          embeds: [embeds.warning('Game Timed Out', `Session expired due to inactivity.\n\n${renderBoard(board)}`)].map(e => e.setFooter({ text: 'Insidious Global Security' }))
+        }).catch(() => {});
+      }
+    });
+  }
+};
