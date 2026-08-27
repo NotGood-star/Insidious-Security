@@ -1,32 +1,45 @@
 const { EmbedBuilder } = require('discord.js');
 
-const COLORS = {
-  SUCCESS: 0x2ECC71,
-  ERROR: 0xE74C3C,
-  WARNING: 0xF1C40F,
-  INFO: 0x3498DB,
-  SECURITY: 0x9B59B6,
-  MODERATION: 0xE67E22,
-  MUSIC: 0x1DB954
+// Custom Emojis
+const EMOJIS = {
+  MOD: '<:Mod:1542472581251072010>',
+  WARNING: '<:11838warning:1492812365593317436>',
+  CROWN: '<:crown:1542472791457144852>',
+  MEMBER: '<:Member:1541403131613806602>'
 };
 
-function baseEmbed(color, title, description) {
-  const embed = new EmbedBuilder()
-    .setColor(color)
-    .setTimestamp();
-    
-  if (title) embed.setTitle(title);
-  if (description) embed.setDescription(description);
-  
-  return embed;
-}
-
 module.exports = {
-  success: (title, desc) => baseEmbed(COLORS.SUCCESS, `🟢 ${title}`, desc),
-  error: (title, desc) => baseEmbed(COLORS.ERROR, `🔴 ${title}`, desc),
-  warning: (title, desc) => baseEmbed(COLORS.WARNING, `🟡 ${title}`, desc),
-  info: (title, desc) => baseEmbed(COLORS.INFO, `🔵 ${title}`, desc),
-  security: (title, desc) => baseEmbed(COLORS.SECURITY, `🛡️ ${title}`, desc),
-  moderation: (title, desc) => baseEmbed(COLORS.MODERATION, `🔨 ${title}`, desc),
-  music: (title, desc) => baseEmbed(COLORS.MUSIC, `🎵 ${title}`, desc)
+  emojis: EMOJIS,
+
+  success(title, description) {
+    return new EmbedBuilder()
+      .setTitle(`${EMOJIS.MOD} ${title}`)
+      .setDescription(description)
+      .setColor('#2b2d31')
+      .setTimestamp();
+  },
+
+  error(title, description) {
+    return new EmbedBuilder()
+      .setTitle(`${EMOJIS.WARNING} ${title}`)
+      .setDescription(description)
+      .setColor('#ed4245')
+      .setTimestamp();
+  },
+
+  warning(title, description) {
+    return new EmbedBuilder()
+      .setTitle(`${EMOJIS.WARNING} ${title}`)
+      .setDescription(description)
+      .setColor('#fee75c')
+      .setTimestamp();
+  },
+
+  security(title, description) {
+    return new EmbedBuilder()
+      .setTitle(`${EMOJIS.CROWN} ${title}`)
+      .setDescription(description)
+      .setColor('#5865f2')
+      .setTimestamp();
+  }
 };
