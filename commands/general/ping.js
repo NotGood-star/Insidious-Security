@@ -17,11 +17,11 @@ module.exports = {
     const dbPing = Date.now() - dbStart;
 
     const pingEmbed = embeds.success(
-      '🏓 Insidious Security Status',
-      `**Bot Latency:** \`${roundtrip}ms\`\n` +
-      `**WebSocket Latency:** \`${wsPing}ms\`\n` +
-      `**PostgreSQL Latency:** \`${dbPing}ms\`\n` +
-      `**Uptime:** <t:${Math.floor((Date.now() - client.uptime) / 1000)}:R>`
+      'System Diagnostics Status',
+      `${embeds.emojis.MOD} **Bot Latency:** \`${roundtrip}ms\`\n` +
+      `${embeds.emojis.CROWN} **WebSocket Latency:** \`${wsPing}ms\`\n` +
+      `${embeds.emojis.MEMBER} **PostgreSQL Latency:** \`${dbPing}ms\`\n` +
+      `${embeds.emojis.WARNING} **Uptime:** <t:${Math.floor((Date.now() - client.uptime) / 1000)}:R>`
     );
 
     return interaction.editReply({ embeds: [pingEmbed] });
