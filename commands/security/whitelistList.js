@@ -16,7 +16,7 @@ module.exports = {
 
     if (list.length === 0) {
       return interaction.editReply({
-        embeds: [embeds.security('Server Whitelist', 'No users or roles are currently whitelisted.')]
+        embeds: [embeds.security(`${interaction.guild.name} Whitelist`, 'No users or roles are currently whitelisted.')]
       });
     }
 
@@ -26,7 +26,7 @@ module.exports = {
     }).join('\n');
 
     const embed = embeds.security(
-      '🛡️ Active Security Whitelist',
+      `${interaction.guild.name} — Active Whitelist`,
       formattedList
     );
 
