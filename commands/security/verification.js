@@ -35,22 +35,22 @@ module.exports = {
     });
 
     const verifyEmbed = embeds.security(
-      'Server Verification Required',
-      'Click the **Verify** button below to complete security verification and access the server.'
+      'Member Verification Required',
+      `${embeds.emojis.MEMBER} Click the **Verify** button below to complete security verification and enter the server.`
     );
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`verify_user_${role.id}`)
-        .setLabel('Verify')
+        .setLabel('Verify Member')
         .setStyle(ButtonStyle.Success)
-        .setEmoji('🛡️')
+        .setEmoji('1541403131613806602')
     );
 
     await channel.send({ embeds: [verifyEmbed], components: [row] });
 
     return interaction.editReply({
-      embeds: [embeds.success('Verification Setup', `Verification panel posted in ${channel} giving ${role}.`)]
+      embeds: [embeds.success('Verification Complete', `${embeds.emojis.MOD} Panel posted in ${channel} configured for ${role}.`)]
     });
   }
 };
