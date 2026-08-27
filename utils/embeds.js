@@ -20,6 +20,7 @@ module.exports = {
       .setTitle(`${EMOJIS.CHECK} ${title}`)
       .setDescription(description)
       .setColor('#2b2d31')
+      .setFooter({ text: 'Insidious Global Security' })
       .setTimestamp();
   },
 
@@ -28,6 +29,7 @@ module.exports = {
       .setTitle(`${EMOJIS.CROSS} ${title}`)
       .setDescription(description)
       .setColor('#ed4245')
+      .setFooter({ text: 'Insidious Global Security' })
       .setTimestamp();
   },
 
@@ -36,6 +38,7 @@ module.exports = {
       .setTitle(`${EMOJIS.WARN} ${title}`)
       .setDescription(description)
       .setColor('#fee75c')
+      .setFooter({ text: 'Insidious Global Security' })
       .setTimestamp();
   },
 
@@ -44,6 +47,7 @@ module.exports = {
       .setTitle(`${EMOJIS.CROWN} ${title}`)
       .setDescription(description)
       .setColor('#5865f2')
+      .setFooter({ text: 'Insidious Global Security' })
       .setTimestamp();
   },
 
@@ -52,6 +56,7 @@ module.exports = {
       .setTitle(`${EMOJIS.LOGS} ${title}`)
       .setDescription(description)
       .setColor('#7289da')
+      .setFooter({ text: 'Insidious Global Security Audit' })
       .setTimestamp();
   }
 };
