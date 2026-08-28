@@ -29,6 +29,9 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    // Defer immediately to prevent 3-second timeout errors
+    await interaction.deferReply({ ephemeral: true });
+
     if (interaction.options.getSubcommand() === 'setup') {
       const targetChannel = interaction.options.getChannel('channel');
 
@@ -48,9 +51,8 @@ module.exports = {
 
       await targetChannel.send({ embeds: [panelEmbed], components: [row] });
 
-      return interaction.reply({
-        embeds: [embeds.security('Ticket System', `Ticket panel successfully sent to ${targetChannel}!`)],
-        ephemeral: true
+      return interaction.editReply({
+        embeds: [embeds.security('Ticket System', `Ticket panel successfully sent to ${targetChannel}!`)]
       });
     }
   }
