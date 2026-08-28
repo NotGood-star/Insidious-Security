@@ -53,13 +53,15 @@ module.exports = {
 
     const collector = response.createMessageComponentCollector({
       componentType: ComponentType.Button,
-      time: 20000
+      time: 30000
     });
 
     collector.on('collect', async btn => {
       if (btn.user.id !== interaction.user.id) {
         return btn.reply({ content: 'Start your own trivia with `/trivia`!', ephemeral: true });
       }
+
+      await btn.deferUpdate();
 
       const selectedOpt = btn.component.label;
       const isCorrect = selectedOpt === trivia.answer;
@@ -73,7 +75,7 @@ module.exports = {
       );
 
       collector.stop();
-      return btn.update({ embeds: [resultEmbed], components: [] });
+      return interaction.editReply({ embeds: [resultEmbed], components: [] });
     });
 
     collector.on('end', (_, reason) => {
