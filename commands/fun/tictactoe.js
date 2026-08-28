@@ -14,7 +14,10 @@ module.exports = {
     const opponent = interaction.options.getUser('opponent');
 
     if (opponent.bot || opponent.id === interaction.user.id) {
-      return interaction.reply({ embeds: [embeds.error('Invalid Opponent', 'You cannot play against yourself or bots.')], ephemeral: true });
+      return interaction.reply({ 
+        embeds: [embeds.error('Invalid Opponent', 'You cannot play against yourself or bots.')], 
+        ephemeral: true 
+      });
     }
 
     await interaction.deferReply();
@@ -34,11 +37,11 @@ module.exports = {
             .setDisabled(disabled || board[index] !== null);
 
           if (board[index] === 'X') {
-            btn.setEmoji('1542741543067066378');
+            btn.setEmoji(EMOJI_X);
           } else if (board[index] === 'O') {
-            btn.setEmoji('1542745217869029377');
+            btn.setEmoji(EMOJI_O);
           } else {
-            btn.setLabel(' ');
+            btn.setLabel('\u200b');
           }
 
           row.addComponents(btn);
