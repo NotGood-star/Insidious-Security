@@ -1,86 +1,156 @@
-const logger = require('../utils/logger');
+const { 
+  ModalBuilder, 
+  TextInputBuilder, 
+  TextInputStyle, 
+  ActionRowBuilder, 
+  ButtonBuilder, 
+  ButtonStyle, 
+  ChannelType, 
+  PermissionFlagsBits 
+} = require('discord.js');
 const embeds = require('../utils/embeds');
+const fs = require('fs');
+
+const EMOJI_DELETE = '<a:TheCafe_Exclamation:1542907934931943475>';
+const EMOJI_TRANSCRIPT = '<a:GeneralSupport:1541400818563948726>';
+const EMOJI_CLAIM = '<a:Verify:1538893080315568138>';
 
 module.exports = {
   name: 'interactionCreate',
-  async execute(interaction, client) {
-    // --- 1. SLASH COMMAND HANDLER ---
-    if (interaction.isChatInputCommand()) {
-      const command = client.commands.get(interaction.commandName);
+  async execute(interaction) {
+    // --- 1. MODAL OPENING ON BUTTON CLICK ---
+    if (interaction.isButton() && interaction.customId === 'create_ticket') {
+      const modal = new ModalBuilder()
+        .setCustomId('ticket_modal')
+        .setTitle('Open a Support Ticket');
 
-      if (!command) {
-        logger.warn(`No command matching /${interaction.commandName} was found.`);
-        return;
-      }
+      const reasonInput = new TextInputBuilder()
+        .setCustomId('ticket_reason')
+        .setLabel('Reason for opening this ticket')
+        .setStyle(TextInputStyle.Paragraph)
+        .setPlaceholder('Describe your issue or request here...')
+        .setRequired(true);
 
-      try {
-        await command.execute(interaction, client);
-      } catch (error) {
-        logger.error(`Error executing command /${interaction.commandName}:`, error);
-
-        const errorEmbed = embeds.error(
-          'Command Error',
-          'An unexpected error occurred while executing this command.'
-        );
-
-        if (interaction.replied || interaction.deferred) {
-          await interaction.followUp({ embeds: [errorEmbed], ephemeral: true }).catch(() => {});
-        } else {
-          await interaction.reply({ embeds: [errorEmbed], ephemeral: true }).catch(() => {});
-        }
-      }
-      return;
+      modal.addComponents(new ActionRowBuilder().addComponents(reasonInput));
+      return interaction.showModal(modal);
     }
 
-    // --- 2. BUTTON INTERACTION HANDLER (VERIFICATION & SYSTEM) ---
-    if (interaction.isButton()) {
-      // Handle Verification Panel Buttons
-      if (interaction.customId.startsWith('verify_user_')) {
-        const roleId = interaction.customId.replace('verify_user_', '');
-        const role = interaction.guild.roles.cache.get(roleId);
+    // --- 2. TICKET CHANNEL CREATION FROM MODAL ---
+    if (interaction.isModalSubmit() && interaction.customId === 'ticket_modal') {
+      await interaction.deferReply({ ephemeral: true });
 
-        if (!role) {
-          return interaction.reply({
-            embeds: [embeds.error('Verification Failed', 'The configured verification role no longer exists in this server.')],
-            ephemeral: true
-          });
-        }
+      const reason = interaction.fields.getTextInputValue('ticket_reason');
+      const channelName = `ticket-${interaction.user.username}`.toLowerCase().replace(/[^a-z0-9-]/g, '');
 
-        try {
-          // Check if user already has the role
-          if (interaction.member.roles.cache.has(roleId)) {
-            return interaction.reply({
-              embeds: [embeds.warning('Already Verified', 'You are already verified in this server!')],
-              ephemeral: true
-            });
+      // Prevent duplicate active tickets
+      const existingChannel = interaction.guild.channels.cache.find(c => c.name === channelName);
+      if (existingChannel) {
+        return interaction.editReply({
+          embeds: [embeds.warning('Ticket Exists', `You already have an open ticket: ${existingChannel}`)]
+        });
+      }
+
+      const ticketChannel = await interaction.guild.channels.create({
+        name: channelName,
+        type: ChannelType.GuildText,
+        permissionOverwrites: [
+          {
+            id: interaction.guild.roles.everyone.id,
+            deny: [PermissionFlagsBits.ViewChannel]
+          },
+          {
+            id: interaction.user.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel, 
+              PermissionFlagsBits.SendMessages, 
+              PermissionFlagsBits.AttachFiles, 
+              PermissionFlagsBits.ReadMessageHistory
+            ]
+          },
+          {
+            id: interaction.guild.members.me.id,
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels]
           }
+        ]
+      });
 
-          // Assign verification role
-          await interaction.member.roles.add(role);
-          return interaction.reply({
-            embeds: [embeds.success('Access Granted', `You have been successfully verified and granted the **${role.name}** role!`)],
-            ephemeral: true
-          });
-        } catch (err) {
-          logger.error('Failed to assign verification role:', err);
-          return interaction.reply({
-            embeds: [embeds.error('Role Error', 'I do not have high enough permissions to assign this role. Please contact an admin.')],
-            ephemeral: true
-          });
-        }
-      }
-      return;
+      const ticketEmbed = embeds.security(
+        `Ticket — ${interaction.user.username}`,
+        `Welcome ${interaction.user}!\n\n` +
+        `**Reason:**\n\`\`\`${reason}\`\`\`\n` +
+        `A staff member will be with you shortly. Use the controls below to manage this ticket.`
+      );
+
+      const controlsRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('ticket_claim')
+          .setLabel('Claim')
+          .setEmoji(EMOJI_CLAIM)
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId('ticket_transcript')
+          .setLabel('Transcript')
+          .setEmoji(EMOJI_TRANSCRIPT)
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId('ticket_delete')
+          .setLabel('Delete')
+          .setEmoji(EMOJI_DELETE)
+          .setStyle(ButtonStyle.Danger)
+      );
+
+      await ticketChannel.send({ content: `${interaction.user}`, embeds: [ticketEmbed], components: [controlsRow] });
+
+      return interaction.editReply({
+        embeds: [embeds.security('Ticket Created', `Your ticket has been created: ${ticketChannel}`)]
+      });
     }
 
-    // --- 3. AUTOCOMPLETE HANDLER (IF NEEDED FOR FUTURE COMMANDS) ---
-    if (interaction.isAutocomplete()) {
-      const command = client.commands.get(interaction.commandName);
-      if (!command || !command.autocomplete) return;
+    // --- 3. TICKET CONTROLS (CLAIM, TRANSCRIPT, DELETE) ---
+    if (interaction.isButton()) {
+      const { customId, channel, user } = interaction;
 
-      try {
-        await command.autocomplete(interaction, client);
-      } catch (error) {
-        logger.error(`Autocomplete error for /${interaction.commandName}:`, error);
+      if (!customId.startsWith('ticket_') || customId === 'create_ticket') return;
+
+      // CLAIM BUTTON
+      if (customId === 'ticket_claim') {
+        if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+          return interaction.reply({ content: 'Only staff can claim tickets.', ephemeral: true });
+        }
+
+        await interaction.reply({
+          embeds: [embeds.security('Ticket Claimed', `${EMOJI_CLAIM} This ticket is now being handled by ${user}.`)]
+        });
+      }
+
+      // TRANSCRIPT BUTTON
+      if (customId === 'ticket_transcript') {
+        await interaction.deferReply();
+
+        const messages = await channel.messages.fetch({ limit: 100 });
+        const log = messages
+          .reverse()
+          .map(m => `[${m.createdAt.toISOString()}] ${m.author.tag}: ${m.cleanContent}`)
+          .join('\n');
+
+        const filePath = `./transcript-${channel.name}.txt`;
+        fs.writeFileSync(filePath, log);
+
+        await interaction.editReply({
+          content: `${EMOJI_TRANSCRIPT} Here is your message transcript:`,
+          files: [filePath]
+        });
+
+        fs.unlinkSync(filePath);
+      }
+
+      // DELETE BUTTON
+      if (customId === 'ticket_delete') {
+        await interaction.reply({
+          embeds: [embeds.warning('Deleting Ticket', `${EMOJI_DELETE} Channel will be deleted in 5 seconds...`)]
+        });
+
+        setTimeout(() => channel.delete().catch(() => {}), 5000);
       }
     }
   }
